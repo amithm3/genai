@@ -1,0 +1,12 @@
+torch~=2.0.1
+torchaudio~=2.0.2
+torchvision~=0.15.2
+torchtext~=0.15.2
+tensorboard~=2.14.0
+numpy~=1.26.0
+pillow~=10.0.1
+matplotlib~=3.8.0
+tqdm~=4.66.1
+av~=10.0.0
+kaggle~=1.5.12
+jupyter~=1.0.0
