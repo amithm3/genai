@@ -41,10 +41,11 @@ class ConvBlock(nn.Sequential):
 
 class ResidualConvBlock(ConvBlock):
     def __init__(self, *args, **kwargs):
+        identity = kwargs.pop("identity", False)
         super().__init__(*args, **kwargs)
         self.shortcut = ConvBlock(self.inp_channels, self.out_channels,
                                   norm=kwargs.get("norm", 0), down=kwargs.get("down", True),
-                                  kernel_size=1, stride=self[0].stride)
+                                  kernel_size=1, stride=self[0].stride) if not identity else nn.Identity()
 
     def forward(self, x):
         return super().forward(x) + self.shortcut(x)
