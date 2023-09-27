@@ -17,7 +17,7 @@ class Config:
     model_version: str = 'v1'
     model_dir: str = "./models/"
     log_dir: str = "./logs/"
-    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    device: str = "cuda" if torch.has_cuda else "mps" if torch.has_mps else "cpu"
     image_shape: tuple = 3, 224, 224
 
     num_epochs: int = 10
@@ -26,13 +26,13 @@ class Config:
     betas: tuple[float, ...] = ()
     alphas: tuple[float, ...] = ()
     lambdas: tuple[float, ...] = ()
-    dropout: float = 0.3
+    dropout: float = 0
 
     writer: Union["SummaryWriter", bool] = False
-    mean: tuple[float, ...] = ()
-    std: tuple[float, ...] = ()
+    mean: tuple[float, ...] = None
+    std: tuple[float, ...] = None
     transforms: "T.Compose" = None
-    denormalize: "T.Normalize" = None
+    denorm: "T.Normalize" = None
 
     @property
     def checkpoint_path(self) -> str:
@@ -49,16 +49,16 @@ class Config:
             self.writer = SummaryWriter(self.log_path)
         if not self.mean: self.mean = (0.5,) * self.image_shape[0]
         if not self.std: self.std = (0.5,) * self.image_shape[0]
-        if not self.transforms: self.transforms = T.Compose([
+        self.transforms = T.Compose([
             T.Resize(self.image_shape[1:]),
             T.ToTensor(),
             T.Normalize(self.mean, self.std),
             lambda x: x.to(self.device),
         ])
-        self._denormalize = T.Normalize(-torch.tensor(self.mean) / torch.tensor(self.std), 1 / torch.tensor(self.std))
+        self.denorm = T.Normalize(-torch.tensor(self.mean) / torch.tensor(self.std), 1 / torch.tensor(self.std))
 
-    def denorm(self, *args, **kwargs):
-        return self._denormalize(*args, **kwargs)
+    def copy(self, **kwargs):
+        return type(self)(**{**self.__dict__, **kwargs})
 
 
 def weights_init(model):

@@ -41,7 +41,7 @@ def get_cycle_gan_trainer(
         grid_realB = make_grid(fixedB, nrow=1, normalize=True)
         # writer.add_graph(..., ...)
 
-    def trainer(DATA: dict[str, dict[str, "torch.Tensor"]], step: int):
+    def trainer(DATA: dict[str, dict[str, "torch.Tensor"]], step: int) -> dict[str, float]:
         realA, realB = DATA["domain_0"]["image"], DATA["domain_1"]["image"]
         fakeA, fakeB = generatorA(realB), generatorB(realA)
         backA, backB = generatorA(fakeB), generatorB(fakeA)
@@ -128,10 +128,11 @@ def get_cycle_gan_trainer(
                     "optimizerD": optimizerD,
                 },
                 step=step,
-                loss=loss_total.item(),
             )
 
-        return loss_total
+        return {
+            "loss": loss_total.item(),
+        }
 
     return trainer
 
