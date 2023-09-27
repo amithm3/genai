@@ -6,26 +6,26 @@ from torch import nn
 class Discriminator(nn.Module, metaclass=ABCMeta):
     @staticmethod
     @abstractmethod
-    def get_head(inp_features: int, first_features: int, **kwargs) -> "nn.Module":
+    def build_head(inp_features: int, first_features: int, **kwargs) -> "nn.Module":
         raise NotImplementedError
 
     @staticmethod
     @abstractmethod
-    def get_blocks(blocks: list[int], **kwargs) -> "nn.Module":
+    def build_blocks(blocks: list[int], **kwargs) -> "nn.Module":
         raise NotImplementedError
 
     @staticmethod
     @abstractmethod
-    def get_pred(inp_features: int, final_features: int, **kwargs) -> "nn.Module":
+    def build_pred(inp_features: int, final_features: int, **kwargs) -> "nn.Module":
         raise NotImplementedError
 
     def __init__(self, inp_features: int, blocks: list[int], **kwargs):
         super().__init__()
         assert len(blocks) > 2
 
-        self.head = self.get_head(inp_features, blocks[0], **kwargs)
-        self.blocks = self.get_blocks(blocks, **kwargs)
-        self.pred = self.get_pred(blocks[-2], blocks[-1], **kwargs)
+        self.head = self.build_head(inp_features, blocks[0], **kwargs)
+        self.blocks = self.build_blocks(blocks, **kwargs)
+        self.pred = self.build_pred(blocks[-2], blocks[-1], **kwargs)
 
     def forward(self, x):
         x = self.head(x)
@@ -35,7 +35,7 @@ class Discriminator(nn.Module, metaclass=ABCMeta):
 
 class ConvDiscriminator(Discriminator):
     @staticmethod
-    def get_head(inp_features: int, first_features: int, **kwargs) -> "nn.Module":
+    def build_head(inp_features: int, first_features: int, **kwargs) -> "nn.Module":
         from blocks import ConvBlock
 
         n = kwargs.pop("n", 1)
@@ -45,7 +45,7 @@ class ConvDiscriminator(Discriminator):
                          norm=0, kernel_size=4, stride=2, padding=1, n=n, p=p)
 
     @staticmethod
-    def get_blocks(blocks: list[int], **kwargs) -> "nn.Module":
+    def build_blocks(blocks: list[int], **kwargs) -> "nn.Module":
         from blocks import ConvBlock
 
         n = kwargs.pop("n", 1)
@@ -60,7 +60,7 @@ class ConvDiscriminator(Discriminator):
                      norm=norm, kernel_size=4, stride=1, padding=1, n=n, p=p))
 
     @staticmethod
-    def get_pred(inp_features: int, final_features: int, **kwargs) -> "nn.Module":
+    def build_pred(inp_features: int, final_features: int, **kwargs) -> "nn.Module":
         from blocks import ConvBlock
 
         n = kwargs.pop("n", 1)

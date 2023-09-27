@@ -8,25 +8,25 @@ from blocks import SkipConvBlock
 class Generator(nn.Module, metaclass=ABCMeta):
     @staticmethod
     @abstractmethod
-    def get_head(inp_features: int, latent_features: int, **kwargs) -> "nn.Module":
+    def build_head(inp_features: int, latent_features: int, **kwargs) -> "nn.Module":
         raise NotImplementedError
 
     @staticmethod
     @abstractmethod
-    def get_blocks(latent_features: int, **kwargs) -> tuple["nn.ModuleList", "nn.Module", "nn.ModuleList"]:
+    def build_blocks(latent_features: int, **kwargs) -> tuple["nn.ModuleList", "nn.Module", "nn.ModuleList"]:
         raise NotImplementedError
 
     @staticmethod
     @abstractmethod
-    def get_pred(latent_features: int, out_features: int, **kwargs) -> "nn.Module":
+    def build_pred(latent_features: int, out_features: int, **kwargs) -> "nn.Module":
         raise NotImplementedError
 
     def __init__(self, inp_features: int, out_features: int, latent_features: int, **kwargs):
         super().__init__()
 
-        self.head = self.get_head(inp_features, latent_features, **kwargs)
-        self.blocks = SkipConvBlock(*self.get_blocks(latent_features, **kwargs))
-        self.pred = self.get_pred(latent_features, out_features, **kwargs)
+        self.head = self.build_head(inp_features, latent_features, **kwargs)
+        self.blocks = SkipConvBlock(*self.build_blocks(latent_features, **kwargs))
+        self.pred = self.build_pred(latent_features, out_features, **kwargs)
 
     def forward(self, x):
         x = self.head(x)
@@ -36,7 +36,7 @@ class Generator(nn.Module, metaclass=ABCMeta):
 
 class ConvGenerator(Generator):
     @staticmethod
-    def get_head(inp_features: int, latent_features: int, **kwargs) -> "nn.Module":
+    def build_head(inp_features: int, latent_features: int, **kwargs) -> "nn.Module":
         from blocks import ConvBlock
 
         n = kwargs.pop("n", 1)
@@ -46,7 +46,7 @@ class ConvGenerator(Generator):
                          norm=0, kernel_size=7, stride=1, padding=3, n=n, p=p)
 
     @staticmethod
-    def get_blocks(latent_features: int, **kwargs) -> tuple["nn.ModuleList", "nn.Module", "nn.ModuleList"]:
+    def build_blocks(latent_features: int, **kwargs) -> tuple["nn.ModuleList", "nn.Module", "nn.ModuleList"]:
         from blocks import ConvBlock, ResidualConvBlock
 
         n = kwargs.pop("n", 1)
@@ -62,7 +62,7 @@ class ConvGenerator(Generator):
         ])
         residual_blocks = nn.Sequential(*[
             ResidualConvBlock(latent_features * 2 ** downsample, latent_features * 2 ** downsample,
-                              norm=norm, kernel_size=3, stride=1, padding=1, n=n, p=p)
+                              identity=True, norm=norm, kernel_size=3, stride=1, padding=1, n=n, p=p)
             for _ in range(residuals)
         ])
         decoder_blocks = nn.ModuleList(reversed([
@@ -74,7 +74,7 @@ class ConvGenerator(Generator):
         return encoder_blocks, residual_blocks, decoder_blocks
 
     @staticmethod
-    def get_pred(latent_features: int, out_features: int, **kwargs) -> "nn.Module":
+    def build_pred(latent_features: int, out_features: int, **kwargs) -> "nn.Module":
         from blocks import ConvBlock
         n = kwargs.pop("n", 1)
         p = kwargs.pop("p", 0)
