@@ -1,5 +1,6 @@
 from abc import abstractmethod, ABCMeta
 import math
+from typing import Union
 
 import torch
 from torch import nn
@@ -37,16 +38,26 @@ class VAE(nn.Module, metaclass=ABCMeta):
         self.encoder = self.build_encoder(inp_features, latent_features, blocks[::+1], **kwargs)
         self.decoder = self.build_decoder(inp_features, latent_features, blocks[::-1], **kwargs)
 
-    def encode(self, x: "torch.Tensor") -> tuple["torch.Tensor", "torch.Tensor", "torch.Tensor"]:
+    def encode(self, x: "torch.Tensor") -> Union[tuple["torch.Tensor", "torch.Tensor", "torch.Tensor"], "torch.Tensor"]:
         mu, logvar = self.encoder(x)
-        return self.reparameterize(mu, logvar), mu, logvar
+        z = self.reparameterize(mu, logvar)
+        if torch.is_grad_enabled():
+            return z, mu, logvar
+        else:
+            return z
 
     def decode(self, z: "torch.Tensor") -> "torch.Tensor":
         return self.decoder(z)
 
-    def forward(self, x: "torch.Tensor") -> tuple["torch.Tensor", "torch.Tensor", "torch.Tensor"]:
-        z, mu, logvar = self.encode(x)
-        return self.decode(z), mu, logvar
+    def forward(self, x: "torch.Tensor") -> Union[
+        tuple["torch.Tensor", "torch.Tensor", "torch.Tensor"], "torch.Tensor"
+    ]:
+        if torch.is_grad_enabled():
+            z, mu, logvar = self.encode(x)
+            return self.decode(z), mu, logvar
+        else:
+            z = self.encode(x)
+            return self.decode(z)
 
 
 class ConvVAE(VAE):
@@ -57,8 +68,8 @@ class ConvVAE(VAE):
         norm = kwargs.get('norm', 1)
 
         return nn.Sequential(
-            ConvBlock(inp_features, blocks[0], nn.LeakyReLU(0.2),
-                      n=n, p=p, norm=0, kernel_size=7, stride=1, padding=3),
+            ConvBlock(inp_features, blocks[0], nn.LeakyReLU(0.01),
+                      n=n, p=p, norm=0, kernel_size=4, stride=2, padding=1),
             *[
                 ConvBlock(inp, out, nn.LeakyReLU(0.2),
                           n=n, p=p, norm=norm, kernel_size=4, stride=2, padding=1)
@@ -81,12 +92,12 @@ class ConvVAE(VAE):
             nn.Identity(),
             nn.Identity(),
             *[
-                ConvBlock(inp, out, nn.ReLU(), down=False,
+                ConvBlock(inp, out, nn.LeakyReLU(0.01), down=False,
                           n=n, p=p, norm=norm, kernel_size=4, stride=2, padding=1)
                 for inp, out in zip(blocks[:-1], blocks[1:])
             ],
             ConvBlock(blocks[-1], inp_features, nn.Tanh(), down=False,
-                      n=n, p=p, norm=0, kernel_size=7, stride=1, padding=3),
+                      n=n, p=p, norm=0, kernel_size=4, stride=2, padding=1),
         )
 
     def _encode(self, x: "torch.Tensor") -> tuple["torch.Tensor", "torch.Tensor", "torch.Tensor"]:
@@ -95,10 +106,10 @@ class ConvVAE(VAE):
 
         self.encoder[-2] = nn.Flatten()
         flat = math.prod(y1.shape[1:])
-        self.encoder[-1][0] = nn.Linear(flat, self.latent_features)
-        self.encoder[-1][1] = nn.Linear(flat, self.latent_features)
+        self.encoder[-1][0] = nn.Linear(flat, self.latent_features, device=y1.device)
+        self.encoder[-1][1] = nn.Linear(flat, self.latent_features, device=y1.device)
 
-        self.decoder[0] = nn.Linear(self.latent_features, flat)
+        self.decoder[0] = nn.Linear(self.latent_features, flat, device=y1.device)
         self.decoder[1] = nn.Unflatten(1, y1.shape[1:])
 
         self.encode = super().encode

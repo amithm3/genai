@@ -1,11 +1,22 @@
 from typing import Callable
 
 import torch
+from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 from tqdm import tqdm as TQDM
 
 BAR_FORMAT = "{desc} {n_fmt}/{total_fmt}|{bar}|{percentage:3.0f}% [{elapsed}<{remaining}, {rate_fmt} {postfix}]"
+
+
+class PerceptualLoss:
+    def __init__(self, model: "nn.Module", criterion=None):
+        if criterion is None: criterion = nn.L1Loss()
+        self.model = model.eval().requires_grad_(False)
+        self.criterion = criterion
+
+    def __call__(self, x, y):
+        return self.criterion(self.model(x), self.model(y))
 
 
 def train(
@@ -48,6 +59,7 @@ def test(
 
 
 __all__ = [
+    "PerceptualLoss",
     "train",
     "test",
 ]

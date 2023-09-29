@@ -6,7 +6,7 @@ from utils.config import Config
 @dataclass
 class CycleGANConfig(Config):
     latent_dim: int = 64
-    coder_len: int = 2
+    downsample: int = 2
     residuals: int = 9
     blocks: tuple = (64, 128, 256, 512)
     betas: tuple[float, float] = (0.5, 0.999)

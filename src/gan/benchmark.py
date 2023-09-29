@@ -12,16 +12,6 @@ if TYPE_CHECKING:
     from torch.utils.tensorboard import SummaryWriter
 
 
-class PerceptualLoss:
-    def __init__(self, model: "nn.Module", criterion=None):
-        if criterion is None: criterion = nn.L1Loss()
-        self.model = model.eval().requires_grad_(False)
-        self.criterion = criterion
-
-    def __call__(self, x, y):
-        return self.criterion(self.model(x), self.model(y))
-
-
 def get_cycle_gan_trainer(
         generatorA: "Generator", generatorB: "Generator",
         discriminatorA: "Discriminator", discriminatorB: "Discriminator",
@@ -86,7 +76,7 @@ def get_cycle_gan_trainer(
         else:
             loss_perceptual = torch.tensor(0)
         # Total Loss
-        lossG = (loss_adversarialG + lambda_cycle * loss_cycle + lambda_identity * loss_identity)
+        lossG = loss_adversarialG + lambda_cycle * loss_cycle + lambda_identity * loss_identity + loss_perceptual
         # backprop
         optimizerG.zero_grad()
         lossG.backward()
@@ -138,6 +128,5 @@ def get_cycle_gan_trainer(
 
 
 __all__ = [
-    "PerceptualLoss",
     "get_cycle_gan_trainer"
 ]
