@@ -2,56 +2,105 @@ import torch
 from torch import nn
 
 
-class ConvBlock(nn.Sequential):
-    NORMS = [None, nn.BatchNorm2d, nn.InstanceNorm2d]
+class LinearBlock(nn.Sequential):
+    def __init__(
+            self,
+            inp_features: int,
+            out_features: int,
+            act: "nn.Module" = None,
+            norm: type["nn.Module"] = None,
+            **kwargs,
+    ):
+        n = kwargs.pop("n", 0)
+        p = kwargs.pop("p", 0)
+        act_every_n = kwargs.pop("act_every_n", False)
+        norm_every_n = kwargs.pop("norm_every_n", True)
 
+        self.inp_features = inp_features
+        self.out_features = out_features
+        self.n = n
+        self.p = p
+
+        layers = [
+            nn.Linear(inp_features, out_features, bias=not norm, **kwargs),
+            act if act_every_n and act else None,
+            norm(out_features) if norm_every_n and norm else None,
+            *[module
+              for module in (
+                  nn.Linear(out_features, out_features, bias=not norm, **kwargs),
+                  act if act_every_n and act else None,
+                  norm(out_features) if norm_every_n and norm else None,
+              )
+              for _ in range(n)],
+            act if not act_every_n and act else None,
+            norm(out_features) if not norm_every_n and norm else None,
+            nn.Dropout(p) if p else None,
+        ]
+
+        super().__init__(*[layer for layer in layers if layer is not None])
+
+
+class ConvBlock(nn.Sequential):
     def __init__(
             self,
             inp_channels: int,
             out_channels: int,
-            activation: "nn.Module" = None,
+            act: "nn.Module" = None,
+            norm: type["nn.Module"] = None,
             **kwargs,
     ):
-        p = kwargs.pop("p", 0)
         n = kwargs.pop("n", 0)
-        norm = kwargs.pop("norm", 0)
+        p = kwargs.pop("p", 0)
+        act_every_n = kwargs.pop("act_every_n", False)
+        norm_every_n = kwargs.pop("norm_every_n", True)
         down = kwargs.pop("down", True)
-        CONV = nn.Conv2d if down else nn.ConvTranspose2d
 
+        CONV = nn.Conv2d if down else nn.ConvTranspose2d
         self.inp_channels = inp_channels
         self.out_channels = out_channels
         self.n = n
+        self.p = p
 
         layers = [
-            CONV(inp_channels, out_channels, bias=not norm, padding_mode="reflect" if down else "zeros", **kwargs),
-            self.NORMS[norm](out_channels) if norm else None,
+            CONV(inp_channels, out_channels, bias=not norm, **kwargs),
+            act if act_every_n and act else None,
+            norm(out_channels) if norm_every_n and norm else None,
             *[module
               for module in (
-                  CONV(out_channels, out_channels, bias=not norm, padding_mode="reflect" if down else "zeros",
-                       kernel_size=3, stride=1, padding=1),
-                  self.NORMS[norm](out_channels) if norm else None
+                  CONV(out_channels, out_channels, bias=not norm, kernel_size=3, stride=1, padding=1),
+                  act if act_every_n and act else None,
+                  norm(out_channels) if norm_every_n and norm else None,
               )
               for _ in range(n)],
-            activation,
-            nn.Dropout(p) if p else None
+            act if not act_every_n and act else None,
+            norm(out_channels) if not norm_every_n and norm else None,
+            nn.Dropout(p) if p else None,
         ]
 
         super().__init__(*[layer for layer in layers if layer is not None])
+
+
+class ResidualLinearBlock(LinearBlock):
+    def __init__(self, *args, **kwargs):
+        identity = kwargs.pop("identity", False)
+        super().__init__(*args, **kwargs)
+        self.identity = identity
+        self.shortcut = LinearBlock(*args, **kwargs) if not identity else nn.Identity()
 
 
 class ResidualConvBlock(ConvBlock):
     def __init__(self, *args, **kwargs):
         identity = kwargs.pop("identity", False)
         super().__init__(*args, **kwargs)
-        self.shortcut = ConvBlock(self.inp_channels, self.out_channels,
-                                  norm=kwargs.get("norm", 0), down=kwargs.get("down", True),
-                                  kernel_size=1, stride=self[0].stride) if not identity else nn.Identity()
+        self.identity = identity
+        kwargs.pop("kernel_size", None)
+        self.shortcut = ConvBlock(*args, **kwargs, kernel_size=1) if not identity else nn.Identity()
 
     def forward(self, x):
         return super().forward(x) + self.shortcut(x)
 
 
-class SkipConvBlock(nn.Module):
+class SkipBlock(nn.Module):
     def __init__(self, encoder: "nn.ModuleList", blocks: "nn.Module", decoder: "nn.ModuleList"):
         super().__init__()
         self.encoder = encoder
@@ -68,3 +117,12 @@ class SkipConvBlock(nn.Module):
             x = torch.cat([x, skips.pop()], dim=1)
             x = block(x)
         return x
+
+
+__all__ = [
+    "LinearBlock",
+    "ConvBlock",
+    "ResidualLinearBlock",
+    "ResidualConvBlock",
+    "SkipBlock",
+]

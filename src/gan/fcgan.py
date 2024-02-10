@@ -4,7 +4,6 @@ from typing import Iterable, TYPE_CHECKING
 import torch
 from torch import nn
 
-from blocks import LinearBlock, ConvBlock, ResidualConvBlock, SkipBlock
 from .gan import GanConfig, Gan
 from .generator import Generator
 from .discriminator import Discriminator
@@ -13,67 +12,69 @@ if TYPE_CHECKING:
     from torch.utils.tensorboard import SummaryWriter
 
 
-class DCGanGenerator(Generator):
-    def __init__(self, inp_features: int, out_channels: int, hidden_channels: int, **kwargs):
+class ConvGenerator(Generator):
+    def __init__(self, inp_channels: int, out_channels: int, latent_channels: int, **kwargs):
         n = kwargs.pop("n", 1)
         p = kwargs.pop("p", 0)
         norm = kwargs.pop("norm", nn.InstanceNorm2d)
         act = kwargs.pop("act", nn.ReLU())
-        upsample = kwargs.pop("upsample", 2)
-        features = kwargs.pop("features", 4)
+        downsample = kwargs.pop("downsample", 2)
         residuals = kwargs.pop("residuals", 9)
         assert kwargs == {}, \
             f"Unused arguments: {kwargs}"
-        super().__init__(inp_features, out_channels, hidden_channels, n=n, p=p, norm=norm, act=act,
-                         upsample=upsample, residuals=residuals, features=features)
+        super().__init__(inp_channels, out_channels, latent_channels, n=n, p=p, norm=norm, act=act,
+                         downsample=downsample, residuals=residuals)
 
     @staticmethod
-    def build_head(inp_features: int, hidden_channels: int, **kwargs) -> "nn.Module":
+    def build_head(inp_channels: int, latent_channels: int, **kwargs) -> "nn.Module":
+        from blocks import ConvBlock
         n = kwargs.pop("n")
         p = kwargs.pop("p")
         act = kwargs.pop("act")
-        upsample = kwargs.pop("upsample")
-        features = kwargs.pop("features")
 
-        return nn.Sequential(
-            LinearBlock(inp_features, hidden_channels * features * features, act,
-                        n=n, p=p, act_every_n=False, norm_every_n=True),
-            nn.Unflatten(1, (hidden_channels, features, features))
-        )
+        return ConvBlock(inp_channels, latent_channels, act,
+                         n=n, p=p, act_every_n=False, norm_every_n=True,
+                         kernel_size=7, stride=1, padding=3)
 
     @staticmethod
-    def build_blocks(hidden_channels: int, **kwargs) -> "nn.Module":
+    def build_blocks(latent_channels: int, **kwargs) -> "nn.Module":
+        from blocks import ConvBlock, ResidualConvBlock, SkipBlock
         n = kwargs.pop("n")
         p = kwargs.pop("p")
         norm = kwargs.pop("norm")
         act = kwargs.pop("act")
-        upsample = kwargs.pop("upsample")
+        downsample = kwargs.pop("downsample")
         residuals = kwargs.pop("residuals")
 
+        encoder_blocks = nn.ModuleList([
+            ConvBlock(latent_channels * 2 ** i, latent_channels * 2 ** (i + 1), act, norm,
+                      n=n, p=p, act_every_n=False, norm_every_n=True, down=True,
+                      kernel_size=4, stride=2, padding=1)
+            for i in range(downsample)
+        ])
         residual_blocks = nn.Sequential(*[
-            ResidualConvBlock(hidden_channels, hidden_channels, act, norm,
+            ResidualConvBlock(latent_channels * 2 ** downsample, latent_channels * 2 ** downsample, act, norm,
                               identity=True,
                               n=n, p=p, act_every_n=False, norm_every_n=True,
                               kernel_size=3, stride=1, padding=1)
             for _ in range(residuals)
         ])
-        upsample_blocks = nn.Sequential(*([
-            ConvBlock(hidden_channels // 2 ** i, hidden_channels // 2 ** (i + 1), act, norm,
+        decoder_blocks = nn.ModuleList(reversed([
+            ConvBlock(latent_channels * 2 ** (i + 1) * 2, latent_channels * 2 ** i, act, norm,
                       n=n, p=p, act_every_n=False, norm_every_n=True, down=False,
                       kernel_size=4, stride=2, padding=1)
-            for i in range(upsample)
+            for i in range(downsample)
         ]))
 
-        return nn.Sequential(residual_blocks, upsample_blocks)
+        return SkipBlock(encoder_blocks, residual_blocks, decoder_blocks)
 
     @staticmethod
-    def build_pred(hidden_channels: int, out_channels: int, **kwargs) -> "nn.Module":
+    def build_pred(latent_channels: int, out_channels: int, **kwargs) -> "nn.Module":
         from blocks import ConvBlock
         n = kwargs.pop("n")
         p = kwargs.pop("p")
-        upsample = kwargs.pop("upsample")
 
-        return ConvBlock(hidden_channels // 2 ** upsample, out_channels, nn.Tanh(),
+        return ConvBlock(latent_channels, out_channels, nn.Tanh(),
                          n=n, p=p, act_every_n=False, norm_every_n=False,
                          kernel_size=7, stride=1, padding=3)
 
@@ -129,16 +130,16 @@ class ConvDiscriminator(Discriminator):
 
 
 @dataclass
-class DCGanConfig(GanConfig):
+class FCGanConfig(GanConfig):
     pass
 
 
-class DCGan(Gan):
-    def __init__(self, config: "DCGanConfig"):
+class FCGan(Gan):
+    def __init__(self, config: "FCGanConfig"):
         super().__init__(
-            DCGanGenerator(config.inp_features, config.out_features, config.latent_features,
-                           n=config.n, p=config.p, norm=config.norm, act=nn.ReLU(),
-                           upsample=config.downsample, features=8, residuals=config.residuals),
+            ConvGenerator(config.inp_features, config.out_features, config.latent_features,
+                          n=config.n, p=config.p, norm=config.norm, act=nn.ReLU(),
+                          downsample=config.downsample, residuals=config.residuals),
             ConvDiscriminator(config.out_features, config.blocks,
                               n=config.n, p=config.p, norm=config.norm, act=nn.LeakyReLU(0.2))
         )

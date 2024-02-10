@@ -20,7 +20,7 @@ class PerceptualLoss:
 
 
 def train(
-        trainer: Callable[[dict[str, "torch.Tensor"], int], dict[str, float]],
+        train_step: Callable[[dict[str, "torch.Tensor"], int], dict[str, float]],
         ds: "Dataset",
         ne: int = 10,
         bs: int = 32,
@@ -33,7 +33,7 @@ def train(
         metrics_sum = {}
         prog: "TQDM" = tqdm(dl, desc=f"Epoch: 0/{ne} | Batch", postfix={"loss": "?"}, bar_format=BAR_FORMAT)
         for batch, DATA in enumerate(prog):
-            metrics = trainer(DATA, step)
+            metrics = train_step(DATA, step)
             for k, v in metrics.items():
                 metrics_sum[k] = metrics_sum.get(k, 0) + v
             prog.set_description(f"Epoch: {epoch + 1}/{ne} | Batch")

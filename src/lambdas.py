@@ -19,6 +19,6 @@ class Parallel(nn.ModuleList):
 
 
 __all__ = [
-    'Lambda',
-    'Parallel',
+    "Lambda",
+    "Parallel",
 ]

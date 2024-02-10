@@ -1,19 +1,57 @@
-from dataclasses import dataclass
+from .config import CycleGANConfig
+from .generator import ConvGenerator
+from .discriminator import ConvDiscriminator
 
-from utils.config import Config
+
+def get_conv_generators(
+        config: "CycleGANConfig",
+):
+    return (
+        ConvGenerator(
+            config.inp_features,
+            config.out_features,
+            config.latent_features,
+            n=config.n,
+            p=config.p,
+            norm=config.norm,
+            downsample=config.downsample,
+            residuals=config.residuals,
+        ),
+        ConvGenerator(
+            config.inp_features,
+            config.out_features,
+            config.latent_features,
+            n=config.n,
+            p=config.p,
+            norm=config.norm,
+            downsample=config.downsample,
+            residuals=config.residuals,
+        ),
+    )
 
 
-@dataclass
-class VAEConfig(Config):
-    latent_dim: int = 64
-    coder_len: int = 2
-    residuals: int = 9
-    blocks: tuple = (64, 128, 256, 512)
-    betas: tuple[float, float] = (0.5, 0.999)
-    lambdas: tuple[float, float] = (10, 0.5)
-    n: int = 0
+def get_conv_discriminators(
+        config: "CycleGANConfig",
+):
+    return (
+        ConvDiscriminator(
+            config.inp_features,
+            config.blocks,
+            n=config.n,
+            p=config.p,
+            norm=config.norm,
+        ),
+        ConvDiscriminator(
+            config.inp_features,
+            config.blocks,
+            n=config.n,
+            p=config.p,
+            norm=config.norm,
+        ),
+    )
 
 
 __all__ = [
-    "VAEConfig",
+    "get_conv_generators",
+    "get_conv_discriminators",
 ]

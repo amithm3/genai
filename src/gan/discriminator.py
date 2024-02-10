@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from typing import Iterable
 
 from torch import nn
 
@@ -6,7 +7,7 @@ from torch import nn
 class Discriminator(nn.Module, metaclass=ABCMeta):
     @staticmethod
     @abstractmethod
-    def build_head(inp_features: int, first_features: int, **kwargs) -> "nn.Module":
+    def build_head(inp: int, first: int, **kwargs) -> "nn.Module":
         raise NotImplementedError
 
     @staticmethod
@@ -16,74 +17,85 @@ class Discriminator(nn.Module, metaclass=ABCMeta):
 
     @staticmethod
     @abstractmethod
-    def build_pred(inp_features: int, final_features: int, **kwargs) -> "nn.Module":
+    def build_pred(final: int, **kwargs) -> "nn.Module":
         raise NotImplementedError
 
-    def __init__(self, inp_features: int, blocks: list[int], **kwargs):
+    def __init__(self, inp: int, blocks: Iterable[int], **kwargs):
+        blocks = list(blocks)
         super().__init__()
         assert len(blocks) > 2
 
-        self.head = self.build_head(inp_features, blocks[0], **kwargs)
+        self.head = self.build_head(inp, blocks[0], **kwargs)
         self.blocks = self.build_blocks(blocks, **kwargs)
-        self.pred = self.build_pred(blocks[-2], blocks[-1], **kwargs)
+        self.pred = self.build_pred(blocks[-1], **kwargs)
 
     def forward(self, x):
         x = self.head(x)
         x = self.blocks(x)
-        return self.pred(x)
+        y = self.pred(x)
+        return y
 
 
-class ConvDiscriminator(Discriminator):
-    @staticmethod
-    def build_head(inp_features: int, first_features: int, **kwargs) -> "nn.Module":
-        from blocks import ConvBlock
-
+class LinearDiscriminator(Discriminator):
+    def __init__(self, inp_features: int, blocks: Iterable[int], **kwargs):
         n = kwargs.pop("n", 1)
         p = kwargs.pop("p", 0)
+        norm = kwargs.pop("norm", nn.InstanceNorm1d)
+        act = kwargs.pop("act", nn.ReLU())
+        assert kwargs == {}, \
+            f"Unused arguments: {kwargs}"
+        super().__init__(inp_features, blocks, n=n, p=p, norm=norm, act=act)
 
-        return ConvBlock(inp_features, first_features, nn.LeakyReLU(0.2),
-                         norm=0, kernel_size=4, stride=2, padding=1, n=n, p=p)
+    @staticmethod
+    def build_head(inp_features: int, first_features: int, **kwargs) -> "nn.Module":
+        from blocks import LinearBlock
+        n = kwargs.pop("n")
+        p = kwargs.pop("p")
+        act = kwargs.pop("act")
+
+        return LinearBlock(inp_features, first_features, act,
+                           n=n, p=p, act_every_n=False, norm_every_n=True)
 
     @staticmethod
     def build_blocks(blocks: list[int], **kwargs) -> "nn.Module":
-        from blocks import ConvBlock
+        from blocks import LinearBlock
+        n = kwargs.pop("n")
+        p = kwargs.pop("p")
+        norm = kwargs.pop("norm")
+        act = kwargs.pop("act")
 
-        n = kwargs.pop("n", 1)
-        p = kwargs.pop("p", 0)
-        norm = kwargs.pop("norm", 2)
+        blocks = nn.Sequential(*[
+            LinearBlock(inp_features, out_features, act, norm,
+                        n=n, p=p, act_every_n=False, norm_every_n=True)
+            for inp_features, out_features in zip(blocks[:-1], blocks[1:])
+        ])
 
-        return nn.Sequential(*[
-            ConvBlock(inp_features, out_features, nn.LeakyReLU(0.2),
-                      norm=norm, kernel_size=4, stride=2, padding=1, n=n, p=p)
-            for inp_features, out_features in zip(blocks[:-2], blocks[1:-1])
-        ], ConvBlock(blocks[-2], blocks[-1], nn.LeakyReLU(0.2),
-                     norm=norm, kernel_size=4, stride=1, padding=1, n=n, p=p))
+        return blocks
 
     @staticmethod
-    def build_pred(inp_features: int, final_features: int, **kwargs) -> "nn.Module":
-        from blocks import ConvBlock
-
-        n = kwargs.pop("n", 1)
+    def build_pred(final_features: int, **kwargs) -> "nn.Module":
+        from blocks import LinearBlock
         p = kwargs.pop("p", 0)
 
-        return ConvBlock(final_features, 1, nn.Sigmoid(),
-                         norm=0, kernel_size=4, stride=1, padding=1, n=n, p=p)
+        return LinearBlock(final_features, 1, nn.Sigmoid(),
+                           n=0, p=p, act_every_n=False, norm_every_n=False)
 
 
-def test_discriminator():
+def test_LinearDiscriminator():
     import torch
 
-    img_shape = 5, 256, 256
-    disc = ConvDiscriminator(img_shape[0], [64, 128, 256, 512])
+    inp_features = 500
+    batch_size = 7
+    x = torch.randn(batch_size, inp_features)
+    disc = LinearDiscriminator(inp_features, [inp_features // 2, inp_features // 4, inp_features // 8, 16])
     print(disc)
-    print(disc(torch.rand(1, *img_shape)).shape)
-    print(disc(torch.rand(7, *img_shape)).shape)
+    y = disc(x)
+    print(y.shape)
 
 
 if __name__ == '__main__':
-    test_discriminator()
+    test_LinearDiscriminator()
 
 __all__ = [
     "Discriminator",
-    "ConvDiscriminator",
 ]
